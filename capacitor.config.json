@@ -1,0 +1,7 @@
+{
+  "appId": "it.taccuino.eroe",
+  "appName": "Taccuino dell’Eroe",
+  "webDir": "www",
+  "backgroundColor": "#14161b",
+  "server": { "androidScheme": "https" }
+}

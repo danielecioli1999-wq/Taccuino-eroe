@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Taccuino dell’Eroe</title>
+<meta name="description" content="Scheda personaggio non ufficiale per Nimble: gratuita, offline, senza account.">
+<meta name="theme-color" content="#14161b">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Taccuino">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app"></div>
+<div id="modal"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<input type="file" id="importfile" accept=".json,application/json" hidden>
+<noscript><p style="padding:1rem">Questa app richiede JavaScript.</p></noscript>
+<script src="data-core.js"></script>
+<script src="data-commander.js"></script>
+<script src="data-berserker.js"></script>
+<script src="engine.js"></script>
+<script src="i18n-en.js"></script>
+<script src="i18n.js"></script>
+<script src="ui-core.js"></script>
+<script src="ui-views.js"></script>
+<script src="ui-actions.js"></script>
+<script src="boot.js"></script>
+</body>
+</html>

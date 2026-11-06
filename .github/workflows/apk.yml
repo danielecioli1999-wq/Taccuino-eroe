@@ -1,0 +1,64 @@
+name: Crea APK Android
+
+# Si avvia da solo quando carichi i file, oppure a mano: scheda "Actions" > "Crea APK Android" > "Run workflow".
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Installa Capacitor
+        run: npm install --no-audit --no-fund
+
+      - name: Prepara i file dell'app (cartella www)
+        run: |
+          mkdir www
+          cp -r index.html style.css manifest.webmanifest boot.js i18n.js i18n-en.js data-*.js engine.js ui-*.js icons www/
+          cp node_modules/@capacitor/core/dist/capacitor.js www/capacitor.js
+          sed -i 's#<meta charset="utf-8">#<meta charset="utf-8">\n<script src="capacitor.js"></script>#' www/index.html
+          grep -c capacitor.js www/index.html
+
+      - name: Crea il progetto Android
+        run: npx cap add android
+
+      - name: Icone, schermata di avvio e firma
+        run: node apk/patch-android.js
+
+      - name: Copia l'app nel progetto Android
+        run: npx cap sync android
+
+      - name: Compila l'APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Pubblica l'APK nelle Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          ls -la "$APK"
+          cp "$APK" Taccuino-dell-Eroe.apk
+          gh release delete apk-latest --yes --cleanup-tag || true
+          gh release create apk-latest Taccuino-dell-Eroe.apk \
+            --title "Taccuino dell’Eroe – APK Android" \
+            --notes "Scarica **Taccuino-dell-Eroe.apk** da questo telefono e aprilo per installare l'app. Build n. ${GITHUB_RUN_NUMBER}."

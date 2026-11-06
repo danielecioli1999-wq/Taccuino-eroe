@@ -1,0 +1,76 @@
+TACCUINO DELL'EROE - scheda personaggio per Nimble (app gratuita: sito installabile + APK Android)
+
+======================================================================
+PARTE 1 - PUBBLICARE SU GITHUB PAGES (una volta sola, gratis, senza badge)
+======================================================================
+1. Estrai lo zip in una cartella (tasto destro > Estrai tutto).
+2. Crea un account gratuito su https://github.com
+3. In alto a destra: "+" > "New repository". Nome: taccuino-eroe. Scegli "Public". Premi "Create repository".
+4. Nella pagina del repository clicca "uploading an existing file".
+5. Apri la cartella estratta, seleziona TUTTO il contenuto (index.html, i file .js, style.css,
+   manifest.webmanifest, sw.js, package.json, capacitor.config.json, le cartelle icons, apk e .github)
+   e trascinalo nella pagina. index.html deve stare nella prima pagina del repository.
+   Se GitHub dice che i file sono troppi (limite 100 per volta), caricali in due volte:
+   prima le cartelle "icons" e "apk", poi tutto il resto.
+6. Premi "Commit changes".
+7. Vai su Settings > Pages. In "Build and deployment" scegli "Deploy from a branch",
+   branch "main", cartella "/ (root)", poi Save.
+8. Dopo 1-2 minuti l'app e' su https://TUONOMEUTENTE.github.io/taccuino-eroe/
+
+INSTALLARE IL SITO SUL TELEFONO
+- Android (Chrome): apri l'indirizzo > menu (tre puntini) > "Installa app".
+- iPhone (Safari): apri l'indirizzo > Condividi > "Aggiungi alla schermata Home".
+Crea i personaggi DOPO l'installazione e apri sempre l'app dall'icona.
+
+======================================================================
+PARTE 2 - APK PER ANDROID (compilato da GitHub, non serve nulla sul PC)
+======================================================================
+L'APK e' una vera app Android che contiene gia' tutti i file: funziona offline e non dipende
+da nessun sito. Solo Android: su iPhone usa il sito installato (parte 1).
+
+1. Nel repository devono esserci anche la cartella ".github" (con dentro workflows/apk.yml),
+   la cartella "apk", package.json e capacitor.config.json (sono nello zip: se hai trascinato
+   tutto nel passo 5, ci sono gia').
+   Se la cartella ".github" non risulta caricata: nel repository "Add file" > "Create new file",
+   nel nome scrivi  .github/workflows/apk.yml  (le barre creano le cartelle), incolla il contenuto
+   del file apk/apk.yml dello zip e premi "Commit changes".
+2. Apri la scheda "Actions" del repository. Se compare un pulsante verde "I understand my workflows,
+   go ahead and enable them", premilo. La build "Crea APK Android" parte da sola dopo ogni
+   caricamento di file; per farla partire a mano: Actions > "Crea APK Android" > "Run workflow".
+3. Aspetta 5-10 minuti: quando c'e' la spunta verde l'APK e' pronto.
+4. Dal TELEFONO apri https://github.com/TUONOMEUTENTE/taccuino-eroe/releases/tag/apk-latest
+   (oppure repository > "Releases" sulla destra) e tocca "Taccuino-dell-Eroe.apk".
+5. Apri il file scaricato. Android chiedera' di consentire l'installazione da questa fonte
+   (Chrome/Browser): consenti. Se Play Protect avvisa che l'app non e' verificata, scegli
+   "Installa comunque" (e' normale per app non pubblicate sul Play Store).
+6. Se la build fallisce (croce rossa): apri l'esecuzione fallita, copia le ultime righe di errore
+   e mandamele, cosi' correggo.
+
+IMPORTANTE SUI DATI
+- L'app APK ha i suoi dati, separati da quelli del sito installato. Per spostare i personaggi:
+  nella vecchia app Altro > "Esporta tutto" (oppure "Copia backup (testo)"), nella nuova
+  "Importa file" (oppure "Incolla backup").
+- Nell'APK "Esporta" apre il menu di Android: scegli Drive, File, WhatsApp... per salvare il backup.
+- Gli aggiornamenti dell'APK si installano SOPRA la versione precedente (stessa firma) senza
+  perdere i personaggi: non disinstallare l'app prima di aggiornare.
+
+======================================================================
+LINGUA E LIVELLO
+======================================================================
+- Altro > "Lingua / Language": Italiano o English (vale per tutta l'interfaccia; i testi delle
+  regole, delle classi e degli oggetti sono gia' in inglese come nel manuale).
+- "+ Nuovo eroe": puoi scegliere il livello di partenza (1-20), la sottoclasse e gli aumenti di
+  caratteristica; i PF di ogni livello sono la media del dado vita e puoi scrivere i PF massimi
+  che vuoi. Le scelte di classe restano da fare nella tab Classe.
+
+BACKUP
+Altro > Eroi e backup: esporta un file e salvalo (es. su Drive). I dati stanno solo sul telefono.
+
+AGGIORNARE L'APP
+Quando ti mando una nuova versione: apri sw.js e aumenta il numero in VERSION
+(taccuino-v6 -> taccuino-v7), poi nel repository usa "Add file > Upload files" e
+trascina di nuovo i file (quelli con lo stesso nome vengono sostituiti). I personaggi salvati
+non si perdono. La build dell'APK riparte da sola e sostituisce quella nelle Releases.
+
+Taccuino dell'Eroe is an independent product published under the Nimble 3rd Party Creator License.
+Nimble TTRPG (c) Nimble Co.
