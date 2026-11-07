@@ -1,6 +1,6 @@
 /* Service worker: tutto in cache, l'app funziona offline.
    Cambia VERSION quando aggiorni i file, così i telefoni scaricano la nuova versione. */
-const VERSION = "taccuino-v6";
+const VERSION = "taccuino-v8";
 const FILES = [
   "./", "index.html", "style.css", "boot.js", "manifest.webmanifest",
   "data-core.js", "data-commander.js", "data-berserker.js", "engine.js", "i18n-en.js", "i18n.js", "ui-core.js", "ui-views.js", "ui-actions.js",

@@ -68,7 +68,7 @@ Altro > Eroi e backup: esporta un file e salvalo (es. su Drive). I dati stanno s
 
 AGGIORNARE L'APP
 Quando ti mando una nuova versione: apri sw.js e aumenta il numero in VERSION
-(taccuino-v6 -> taccuino-v7), poi nel repository usa "Add file > Upload files" e
+(taccuino-v8 -> taccuino-v9), poi nel repository usa "Add file > Upload files" e
 trascina di nuovo i file (quelli con lo stesso nome vengono sostituiti). I personaggi salvati
 non si perdono. La build dell'APK riparte da sola e sostituisce quella nelle Releases.
 

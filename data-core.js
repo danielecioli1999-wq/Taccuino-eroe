@@ -88,7 +88,7 @@
         { name: "These old bones…", text: "Your age has long since started to show. –1 max Wounds.", mods: { maxWounds: -1 } },
       ],
     }),
-    B("devoted-protector", "Devoted Protector", "Choose 1 ally in your party. You can survive +3 max Wounds as long as they are nearby. Whenever they take a Wound, you do too."),
+    B("devoted-protector", "Devoted Protector", "Choose 1 ally in your party. You can survive +3 max Wounds as long as they are nearby. Whenever they take a Wound, you do too.", { mods: { maxWounds: 3 } }),
     B("academy-dropout", "Academy Dropout", "School just isn’t for everyone! You learn by experience in the real world (or at least that’s what you tell yourself). Learn any 1 Utility Spell."),
     B("bad-choice", "Made a BAD Choice", "Start with 500 or 1,000 extra gold, or an uncommon/rare magical item (that your GM allows). Gain an equally powerful curse or enemy who wants it back. If you choose this background, your GM may allow you to choose another."),
     B("haunted-past", "Haunted Past", "You are haunted by voices that occasionally give you cryptic advice. The voices are sometimes VERY helpful. Other times they only want to see you suffer. Advantage against fear."),

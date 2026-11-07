@@ -196,3 +196,26 @@ label.check input { width: 20px; min-height: 20px; height: 20px; flex: none; mar
 
 .lvsec { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line, #3a3a4a); border-radius: 12px; }
 .lvsec h3 { margin: 0; }
+
+[hidden] { display: none !important; }
+.addbar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; margin-bottom: 8px; }
+.addbar .check { grid-column: 1 / -1; }
+.coins { font-size: .9rem; color: var(--muted, #9aa); margin: 0 0 8px; }
+.form.row3 { grid-template-columns: 1fr 1fr 2fr; }
+
+/* scheda Classe: sotto-schede, pin, descrizioni usi */
+.seg { display: flex; gap: 4px; margin: 4px 0 12px; padding: 4px; background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; }
+.seg button { flex: 1; min-height: 40px; border: 0; border-radius: 9px; background: transparent; color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
+.seg button.on { background: var(--accent); color: var(--accent-ink); }
+.btn.sm { min-height: 34px; padding: 4px 12px; font-size: .88rem; flex: 0 1 auto; }
+.btnrow.tight { margin: 0 0 6px; }
+.pinrow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.pinmark { font-size: .8em; }
+.warnbar { margin: 0 0 10px; padding: 8px 12px; border: 1px solid var(--accent); border-radius: 10px; font-size: .92rem; }
+.linkbtn { background: none; border: 0; color: var(--accent); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; padding: 0 2px; }
+.use2 { border-top: 1px solid var(--line); }
+.use2:first-of-type { border-top: 0; }
+.use2 .use { border-top: 0; }
+.det.udesc { border-top: 0; margin: -4px 0 4px; }
+.det.udesc summary { padding: 4px 0; font-size: .85rem; color: var(--muted); }
+.det.udesc:first-of-type { margin-top: -4px; }

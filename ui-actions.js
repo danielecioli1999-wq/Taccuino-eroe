@@ -9,7 +9,27 @@
   /* ---------- navigazione / modifica ---------- */
   A.tab = (el) => { S.tab = el.dataset.tab; UI.render(); window.scrollTo(0, 0); };
   A["tab-zaino"] = () => { S.tab = "zaino"; UI.render(); window.scrollTo(0, 0); };
-  A["tab-classe"] = () => { S.tab = "classe"; UI.render(); window.scrollTo(0, 0); };
+  A["tab-classe"] = () => { S.tab = "classe"; S.ctab = "prog"; UI.render(); window.scrollTo(0, 0); };
+  A.ctab = (el) => { S.ctab = el.dataset.tab; UI.render(); window.scrollTo(0, 0); };
+  A["det-all"] = (el) => {
+    const on = el.dataset.v === "1";
+    document.querySelectorAll("#app details.det[data-d]").forEach((x) => { x.open = on; S.open[x.dataset.d] = on; });
+  };
+  A["pin-toggle"] = (el) => {
+    const { c } = ctx();
+    const id = el.dataset.pin, tab = el.dataset.tab;
+    c.pins = c.pins || [];
+    let p = c.pins.find((x) => x.id === id);
+    if (!p) {
+      const r = UI.pinReg[id];
+      if (!r) return;
+      p = { id, name: r.name, sub: r.sub, text: r.text, tabs: [] };
+      c.pins.push(p);
+    }
+    if (p.tabs.includes(tab)) p.tabs = p.tabs.filter((x) => x !== tab); else p.tabs.push(tab);
+    if (!p.tabs.length) c.pins = c.pins.filter((x) => x.id !== id);
+    UI.commit();
+  };
   A["open-chars"] = () => { S.tab = "chars"; UI.render(); window.scrollTo(0, 0); };
   A["edit-toggle"] = () => { S.edit = !S.edit; UI.render(); };
   A["modal-close"] = () => UI.closeModal();
@@ -294,20 +314,36 @@
     UI.toast("Pozione usata: +" + got + " PF");
     UI.commit();
   };
-  A["open-additem"] = () => UI.openModal("additem", { f: {} });
+  A["open-additem"] = () => UI.openModal("additem", { f: { qty: 1, pay: S.db.payDefault !== false, q: "", k: "" } });
   A["open-customitem"] = () => UI.openModal("customitem", { f: { kind: "misc", name: "", n: 1, die: 6, stat: "STR", dtype: "slashing", base: 0, dex: true, def: 1, text: "", slots: 1 } });
   A["additem-pick"] = (el) => {
     const { c } = ctx();
-    const it = NIM.addItem(c, el.dataset.id);
-    UI.toast(NIM.ITEM_BY_ID[el.dataset.id].name + " aggiunto allo zaino");
+    const f = S.modal.f;
+    const base = NIM.ITEM_BY_ID[el.dataset.id];
+    const qty = Math.max(1, Math.round(+f.qty) || 1);
+    let msg = qty > 1 ? qty + "× " + base.name : base.name;
+    if (f.pay) {
+      const unit = NIM.costSp(base.cost);
+      if (unit == null) msg += " aggiunto: prezzo variabile (" + base.cost + "), scala le monete a mano";
+      else {
+        const tot = unit * qty;
+        if (!NIM.payCoins(c, tot)) return UI.toast("Monete insufficienti: servono " + NIM.fmtCoins(tot) + ", hai " + NIM.fmtCoins(NIM.coinsSp(c)) + ".");
+        msg += " aggiunto allo zaino" + (tot ? " (−" + NIM.fmtCoins(tot) + ")" : "");
+      }
+    } else msg += " aggiunto allo zaino";
+    S.db.payDefault = !!f.pay;
+    NIM.addCatalog(c, el.dataset.id, qty);
+    UI.toast(msg);
     UI.commit();
-    return it;
   };
   UI.live.additem = function () {
-    const q = (document.getElementById("iq").value || "").toLowerCase().trim();
-    const k = document.getElementById("ik").value;
-    document.querySelectorAll("#ilist .irow").forEach((el) => { el.hidden = !((!q || el.dataset.name.includes(q)) && (!k || el.dataset.kind === k)); });
+    const f = S.modal && S.modal.f;
+    if (!f) return;
+    f.q = (document.getElementById("iq").value || "").toLowerCase().trim();
+    f.k = document.getElementById("ik").value;
+    document.querySelectorAll("#ilist .irow").forEach((el) => { el.hidden = !((!f.q || el.dataset.name.includes(f.q)) && (!f.k || el.dataset.kind === f.k)); });
   };
+  A["slots-toggle"] = () => { const { c } = ctx(); c.noSlots = !c.noSlots; UI.commit(); };
   A["customitem-save"] = () => {
     const { c } = ctx();
     const f = S.modal.f;
@@ -322,7 +358,8 @@
   A["item-edit"] = (el) => {
     const { c } = ctx();
     const inst = c.items[+el.dataset.idx];
-    UI.openModal("itemedit", { idx: +el.dataset.idx, f: { name: inst.name || "", qty: inst.qty || 1, slots: inst.slotsOverride != null ? inst.slotsOverride : "", stat: inst.stat || "", bonus: inst.bonus || 0, noProf: !!inst.noProf, notes: inst.notes || "" } });
+    const r = NIM.resolveItem(inst);
+    UI.openModal("itemedit", { idx: +el.dataset.idx, f: { name: inst.name || "", n: r.n, die: r.die, dtype: r.dtype || "", qty: inst.qty || 1, slots: inst.slotsOverride != null ? inst.slotsOverride : "", stat: inst.stat || "", bonus: inst.bonus || 0, noProf: !!inst.noProf, notes: inst.notes || "" } });
   };
   A["item-save"] = () => {
     const { c } = ctx();
@@ -333,6 +370,12 @@
     if (f.slots === "" || f.slots == null) delete inst.slotsOverride; else inst.slotsOverride = num(f.slots, 1);
     if (f.stat) inst.stat = f.stat; else delete inst.stat;
     inst.bonus = num(f.bonus, 0);
+    const baseW = NIM.ITEM_BY_ID[inst.ref];
+    if (baseW && baseW.kind === "weapon" || inst.kind === "weapon") {
+      const setOv = (k, v) => { if (baseW && baseW[k] === v) delete inst[k]; else inst[k] = v; };
+      setOv("n", Math.max(1, Math.round(num(f.n, 1)))); setOv("die", Math.max(2, Math.round(num(f.die, 6))));
+      if (String(f.dtype || "").trim()) setOv("dtype", String(f.dtype).trim());
+    }
     inst.noProf = !!f.noProf;
     inst.notes = f.notes || "";
     S.modal = null; UI.commit();
@@ -625,12 +668,18 @@
   };
 
   M.additem = (c, d, m) => {
+    const f = m.f;
     const kinds = [["", "Tutto"], ["weapon", "Armi"], ["armor", "Armature"], ["shield", "Scudi"], ["misc", "Altro"]];
     const rows = NIM.ITEMS.map((i) => {
       const det = i.kind === "weapon" ? `${i.n}d${i.die}+${i.stat} ${i.dtype} · ${i.props.join(", ") || "—"}` : i.kind === "armor" ? `Defense ${i.base}${i.dex ? "+DEX" : ""}${i.maxDex ? " (max " + i.maxDex + ")" : ""}${i.req ? " · Req. STR " + i.req : ""}` : i.kind === "shield" ? `Defense +${i.def}${i.req ? " · Req. STR " + i.req : ""}` : i.text;
-      return `<div class="irow" data-name="${esc(i.name.toLowerCase())}" data-kind="${i.kind}"><div class="itxt"><b>${esc(i.name)}</b><small>${esc(det)} · ${esc(i.cost)}</small></div><button class="btn small" data-act="additem-pick" data-id="${i.id}">Aggiungi</button></div>`;
+      const nm = i.name.toLowerCase();
+      const hid = !((!f.q || nm.includes(f.q)) && (!f.k || i.kind === f.k));
+      return `<div class="irow" data-name="${esc(nm)}" data-kind="${i.kind}" ${hid ? "hidden" : ""}><div class="itxt"><b>${esc(i.name)}</b><small>${esc(det)} · ${esc(i.cost)}</small></div><button class="btn small" data-act="additem-pick" data-id="${i.id}">Aggiungi</button></div>`;
     }).join("");
-    return `${head("Aggiungi dal catalogo")}<div class="mbody"><div class="gfilters"><input id="iq" placeholder="Cerca…" data-live="additem"><select id="ik" data-live="additem">${kinds.map(([v, t]) => `<option value="${v}">${t}</option>`).join("")}</select></div><div id="ilist">${rows}</div></div>`;
+    return `${head("Aggiungi dal catalogo")}<div class="mbody">
+      <div class="addbar"><label>Quantità<input type="number" inputmode="numeric" min="1" data-mf="qty" value="${esc(f.qty)}"></label><p class="coins">Monete: <b>${esc(NIM.fmtCoins(NIM.coinsSp(c)))}</b></p>
+      <label class="check"><input type="checkbox" data-mf="pay" ${f.pay ? "checked" : ""}> Scala il costo dalle monete</label></div>
+      <div class="gfilters"><input id="iq" placeholder="Cerca…" value="${esc(f.q)}" data-live="additem"><select id="ik" data-live="additem">${kinds.map(([v, t]) => `<option value="${v}" ${v === f.k ? "selected" : ""}>${t}</option>`).join("")}</select></div><div id="ilist">${rows}</div></div>`;
   };
   document.addEventListener("change", (e) => { if (e.target.dataset && e.target.dataset.live === "additem") UI.live.additem(); });
 
@@ -644,7 +693,7 @@
     return `${head("Oggetto personalizzato")}<div class="mbody"><div class="form">
       <label>Nome<input data-mf="name" value="${esc(f.name)}" placeholder="es. Spada +1"></label>
       <label>Tipo${optSel("kind", [{ v: "misc", t: "Equipaggiamento / altro" }, { v: "weapon", t: "Arma" }, { v: "armor", t: "Armatura" }, { v: "shield", t: "Scudo" }], f.kind, "data-rerender")}</label></div>
-      ${extra}<div class="form"><label>Slot occupati<input type="number" step="0.5" min="0" data-mf="slots" value="${esc(f.slots)}"></label><label>Note / effetto<input data-mf="text" value="${esc(f.text)}"></label></div>
+      ${extra}<div class="form">${d.slotsOn ? `<label>Slot occupati<input type="number" step="0.5" min="0" data-mf="slots" value="${esc(f.slots)}"></label>` : ""}<label>Note / effetto<input data-mf="text" value="${esc(f.text)}"></label></div>
       <div class="btnrow"><button class="btn" data-act="modal-close">Annulla</button><button class="btn primary" data-act="customitem-save">Aggiungi</button></div></div>`;
   };
 
@@ -654,8 +703,9 @@
     const isW = it.kind === "weapon";
     return `${head(esc(it.name))}<div class="mbody"><div class="form">
       <label>Nome<input data-mf="name" value="${esc(f.name || it.name)}"></label>
-      <div class="form row2"><label>Quantità<input type="number" min="1" data-mf="qty" value="${esc(f.qty)}"></label><label>Slot (vuoto = predefinito)<input type="number" step="0.5" min="0" data-mf="slots" value="${esc(f.slots)}"></label></div>
-      ${isW ? `<div class="form row2"><label>Stat dei danni${optSel("stat", [{ v: "", t: "Predefinita (" + (NIM.ITEM_BY_ID[it.ref] ? NIM.ITEM_BY_ID[it.ref].stat : it.stat) + ")" }, { v: "STR", t: "STR" }, { v: "DEX", t: "DEX" }], f.stat)}</label><label>Bonus ai danni<input type="number" data-mf="bonus" value="${esc(f.bonus)}"></label></div>
+      <div class="form row2"><label>Quantità<input type="number" min="1" data-mf="qty" value="${esc(f.qty)}"></label>${d.slotsOn ? `<label>Slot (vuoto = predefinito)<input type="number" step="0.5" min="0" data-mf="slots" value="${esc(f.slots)}"></label>` : ""}</div>
+      ${isW ? `<div class="form row3"><label>Dadi<input type="number" min="1" data-mf="n" value="${esc(f.n)}"></label><label>Facce<input type="number" min="2" data-mf="die" value="${esc(f.die)}"></label><label>Tipo di danno<input data-mf="dtype" value="${esc(f.dtype)}"></label></div>
+      <div class="form row2"><label>Stat dei danni${optSel("stat", [{ v: "", t: "Predefinita (" + (NIM.ITEM_BY_ID[it.ref] ? NIM.ITEM_BY_ID[it.ref].stat : it.stat) + ")" }, { v: "STR", t: "STR" }, { v: "DEX", t: "DEX" }], f.stat)}</label><label>Bonus ai danni<input type="number" data-mf="bonus" value="${esc(f.bonus)}"></label></div>
       <label class="check"><input type="checkbox" data-mf="noProf" ${f.noProf ? "checked" : ""}> Senza competenza (non può critare)</label>` : ""}
       <label>Note<input data-mf="notes" value="${esc(f.notes)}"></label></div>
       ${isW && NIM.ITEM_BY_ID[it.ref] && NIM.ITEM_BY_ID[it.ref].stat === "DEX" && false ? "" : ""}

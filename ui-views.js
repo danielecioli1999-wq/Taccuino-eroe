@@ -86,7 +86,7 @@
       ${kv("Taglia", esc(d.size))}
       ${kv("Dadi Vita", d.maxHD + "d" + d.hdSize)}
       ${kv("Ferite max", d.maxWounds)}
-      ${kv("Slot zaino", d.slotsUsed + "/" + d.slotsCap, "tab-zaino", "tap " + (d.slotsUsed > d.slotsCap ? "warn" : ""))}
+      ${d.slotsOn ? kv("Slot zaino", d.slotsUsed + "/" + d.slotsCap, "tab-zaino", "tap " + (d.slotsUsed > d.slotsCap ? "warn" : "")) : ""}
       ${kv("Salita livello", d.lvl + "/20", "tab-classe", "tap")}
     </div>`);
   }
@@ -110,7 +110,7 @@
       <label class="form"><input data-bind="languages" data-silent value="${esc(c.languages)}" placeholder="Altre lingue scelte (es. Elvish, Goblin)"></label>`);
   }
 
-  V.scheda = (c, d) => identityCard(c, d) + statsCard(c, d) + derivedCard(c, d) + skillsCard(c, d) + languagesCard(c, d);
+  V.scheda = (c, d) => identityCard(c, d) + pinsCard(c, "scheda") + statsCard(c, d) + derivedCard(c, d) + skillsCard(c, d) + languagesCard(c, d);
 
   /* ---------- COMBAT ---------- */
   function vitalsCard(c, d) {
@@ -188,15 +188,29 @@
     return card("Combat Tactics", `${rows}<p class="muted small">Quando attacchi puoi spendere un Combat Die per usare una Combat Tactic (max 1 per attacco). “Usa” segna un Combat Die speso: tira il dado e applica l’effetto.</p>`);
   }
 
+
+  /* ---------- abilità fissate (pin) ---------- */
+  const PIN_TABS = [["scheda", "Scheda"], ["combat", "Combat"], ["zaino", "Zaino"]];
+  UI.pinReg = {};
+  const pinOn = (c, id, tab) => (c.pins || []).some((p) => p.id === id && p.tabs.includes(tab));
+  function pinsCard(c, tab) {
+    const list = (c.pins || []).filter((p) => p.tabs.includes(tab));
+    if (!list.length) return "";
+    return card("Abilità fissate", list.map((p) => det("pin-" + tab + "-" + p.id, `<b>${esc(p.name)}</b>${p.sub ? ` <span class="chip tiny">${esc(p.sub)}</span>` : ""}`,
+      para(p.text) + `<button class="btn ghost sm" data-act="pin-toggle" data-pin="${esc(p.id)}" data-tab="${tab}">Togli da questa scheda</button>`)).join("") +
+      '<p class="muted small">Le abilità si fissano dalla scheda Classe.</p>');
+  }
+  UI.pinsCard = pinsCard;
+
   function usesCard(c, d) {
     const rows = d.uses.map((u) => {
       const used = Math.min(u.max, c.used[u.key] || 0);
       const left = u.max - used;
       const pips = u.max <= 8 ? Array.from({ length: u.max }, (_, i) => `<button class="upip ${i < left ? "on" : ""}" data-act="use-pip" data-key="${u.key}" data-max="${u.max}" data-on="${i < left ? 1 : 0}" aria-label="${esc(u.label)}"></button>`).join("")
         : `${UI.stepper("use-step", { key: u.key }, left, { minDisabled: left <= 0, maxDisabled: left >= u.max })}`;
-      return `<div class="use"><div class="utxt"><b>${esc(u.label)}</b><small class="muted">${PER[u.per] || ""} · ${esc(u.src || "")}</small></div><span class="pips">${u.max === 0 ? '<span class="muted small">nessun uso</span>' : pips}</span></div>`;
+      return `<div class="use2"><div class="use"><div class="utxt"><b>${esc(u.label)}</b><small class="muted">${PER[u.per] || ""} · ${esc(u.src || "")}</small></div><span class="pips">${u.max === 0 ? '<span class="muted small">nessun uso</span>' : pips}</span></div>${u.text ? det("use-" + u.key, "Descrizione", para(u.text), "udesc") : ""}</div>`;
     }).join("");
-    return card("Usi delle abilità", `${rows}<p class="muted small">“Fine turno”, “Inizia scontro” e “Riposo (Safe Rest)” ripristinano automaticamente quelli che si rigenerano.</p>`);
+    return card("Usi delle abilità", `${rows}<p class="muted small">Tocca “Descrizione” per leggere cosa fa l’abilità. “Fine turno”, “Inizia scontro” e “Riposo (Safe Rest)” ripristinano automaticamente quelli che si rigenerano.</p>`);
   }
 
   function condsCard(c, d) {
@@ -239,7 +253,7 @@
     return card("Muscle Spells", `<p class="muted small">FD (Fury Dice attuali): <b>${c.fury}</b> · STR ${fmt(d.stats.STR)}. I Fury Dice non si spendono per lanciare: servono solo come requisito.</p>${rows}`);
   }
 
-  V.combat = (c, d) => vitalsCard(c, d) + turnCard(c, d) + rageCard(c, d) + muscleCard(c, d) + arsenalCard(c, d) + resourcesCard(c, d) + attacksCard(c, d) + tacticsCard(c, d) + usesCard(c, d) + condsCard(c, d);
+  V.combat = (c, d) => vitalsCard(c, d) + turnCard(c, d) + pinsCard(c, "combat") + rageCard(c, d) + muscleCard(c, d) + arsenalCard(c, d) + resourcesCard(c, d) + attacksCard(c, d) + tacticsCard(c, d) + usesCard(c, d) + condsCard(c, d);
 
   /* ---------- CLASSE ---------- */
   function optionSelect(c, d, slot) {
@@ -258,9 +272,19 @@
     return `${sl}${o ? `<p class="optinfo">${esc(o.text)}</p>` : ""}`;
   }
 
+  // abilità consultabile con pulsanti "fissa in altre schede"
+  function ab(c, id, summary, text, name, sub) {
+    UI.pinReg[id] = { name, sub: sub || "", text };
+    const pinned = (c.pins || []).some((p) => p.id === id);
+    const row = `<div class="pinrow"><small class="muted">Mostra anche in:</small>${PIN_TABS.map(([t, l]) => `<button class="chip toggle ${pinOn(c, id, t) ? "on" : ""}" data-act="pin-toggle" data-pin="${esc(id)}" data-tab="${t}">${l}</button>`).join("")}</div>`;
+    return det(id, summary + (pinned ? ' <span class="pinmark" title="Fissata">📌</span>' : ""), para(text) + row);
+  }
+
   V.classe = (c, d) => {
     const cls = d.cls;
-    const info = NIM.levelUpInfo(c);
+    UI.pinReg = {};
+    const tab = S.ctab || "abilita";
+    const missing = d.slots.filter((x) => !d.choices[x.id]).length;
     let h = `<div class="row between"><div><h1>${esc(cls.name)}</h1><p class="muted">${esc(cls.blurb)}</p></div></div>
       <div class="grid3 small">
         <div class="kv"><small>Key Stats</small><b>${cls.keyStats.join(" · ")}</b></div>
@@ -268,57 +292,63 @@
         <div class="kv"><small>PF iniziali</small><b>${cls.startHP}</b></div>
       </div><p class="muted small">Salvezze: ${NIM.STATS.filter((x) => cls.saves[x] !== "neu").map((x) => x + (cls.saves[x] === "adv" ? " ▲" : " ▼")).join(", ")} · Armature: ${esc(cls.armorText)} · Armi: ${esc(cls.weaponsText)}</p>`;
     let out = card("", h);
+    out += `<div class="seg" role="tablist">${[["abilita", "Abilità"], ["scelte", "Scelte" + (missing ? " (" + missing + ")" : "")], ["prog", "Livello"]].map(([id, l]) => `<button class="${tab === id ? "on" : ""}" data-act="ctab" data-tab="${id}">${l}</button>`).join("")}</div>`;
+    if (tab === "scelte") return out + classChoices(c, d);
+    if (tab === "prog") return out + classProgress(c, d);
 
-    out += card("Livello " + c.level + " / 20", `<div class="btnrow wrap">${c.level < 20 ? `<button class="btn primary" data-act="open-levelup">Sali al livello ${c.level + 1}</button>` : '<span class="chip good">Livello massimo</span>'}${c.level > 1 ? '<button class="btn ghost" data-act="levelup-undo">Annulla ultimo livello</button>' : ""}</div>
-      <p class="muted small">Il level up apre una guida: PF, aumento di caratteristica, nuove capacità e sottoclasse. Il GM decide quando sali (di solito durante un Safe Rest).</p>`);
+    out += `<div class="btnrow wrap tight"><button class="btn ghost sm" data-act="det-all" data-v="1">Espandi tutto</button><button class="btn ghost sm" data-act="det-all" data-v="0">Comprimi tutto</button></div>
+      <p class="muted small">Apri un’abilità e tocca “Scheda / Combat / Zaino” (📌) per mostrarne la descrizione anche in quella schermata.</p>`;
+    if (missing) out += `<div class="warnbar">Hai ${missing} scelte da fare: <button class="linkbtn" data-act="ctab" data-tab="scelte">vai a Scelte</button></div>`;
 
-    // sottoclasse
+    const orders = d.orders.map((id) => cls.orders.find((o) => o.id === id)).filter(Boolean);
+    if (orders.length) out += card("Commander’s Orders", orders.map((o) => ab(c, "ord-" + o.id, `<b>${esc(o.name)}</b> <span class="chip tiny">${esc(o.cost)}</span>`, NIM.orderText(o, d.isSB), o.name, o.cost)).join(""));
+    if (d.masteries.length) out += card("Weapon Mastery", d.masteries.map((id) => cls.masteries.find((m) => m.id === id)).filter(Boolean).map((m) => ab(c, "mas-" + m.id, `<b>${esc(m.name)}</b>`, m.text, m.name, "Mastery")).join(""));
+    if (d.isSB) {
+      const sp = d.spells.map((id) => NIM.SPELL_BY_ID[id]).filter(Boolean);
+      out += card("Incantesimi (Spellblade)", `<p class="muted small">Mana: <b>${c.mana}/${d.maxMana}</b> (INT, ottenuto all’inizio dello scontro). Costo = Tier; i cantrip sono gratis. Spellforge: all’iniziativa puoi lanciare Enchant Weapon gratis.</p>` +
+        (sp.length ? sp.map((x) => spellDet(x, d)).join("") : '<p class="muted">Nessun incantesimo scelto ancora (vedi “Scelte”).</p>'));
+    }
+    if (d.arsenal && d.arsenal.length) out += card("Savage Arsenal", d.arsenal.map((id) => cls.arsenal.find((x) => x.id === id)).filter(Boolean).map((a) => ab(c, "sa-" + a.id, `<b>${esc(a.name)}</b> <span class="chip tiny">${esc(a.cost)}</span>`, a.text, a.name, a.cost)).join(""));
+    if (d.mm) out += card("Muscle Spells", `<p class="muted small">Si lanciano se hai almeno il numero di Fury Dice richiesto (REQ). FD = i tuoi Fury Dice.</p>` + cls.muscleSpells.map((sp) => ab(c, "ms-" + sp.id, `<b>${esc(sp.name)}</b> <span class="chip tiny">REQ ${Math.max(0, sp.req - d.fdReq)} FD</span> <span class="chip tiny">${esc(sp.cost)}</span>`, sp.text, sp.name, sp.cost)).join(""));
+
+    const shown = (f) => !(f.replacedBy && f.replacedBy === d.subId);
+    const got = cls.features.filter((f) => f.level <= c.level && shown(f));
+    out += card("Capacità di classe", got.map((f) => ab(c, "feat-" + f.level + f.name, `<b>${esc(f.name)}</b> <span class="chip tiny">Lv ${f.level}</span>`, f.text, f.name, "Lv " + f.level)).join(""));
+    if (d.sub) {
+      const sf = d.sub.features.filter((f) => f.level <= c.level);
+      out += card(esc(d.sub.name), `<p class="muted small">${esc(d.sub.tagline)}</p>` + sf.map((f) => f.items.map(([n, t]) => ab(c, "sf-" + d.sub.id + f.level + n, `<b>${esc(n)}</b> <span class="chip tiny">Lv ${f.level}</span>`, t, n, "Lv " + f.level)).join("")).join(""));
+    }
+    return out;
+  };
+
+  function classChoices(c, d) {
+    const cls = d.cls;
+    let out = "";
     if (c.level >= 3) {
-      const so = [{ v: "", t: "— scegli la sottoclasse —" }].concat(cls.subclasses.map((s) => ({ v: s.id, t: s.name })));
+      const so = [{ v: "", t: "— scegli la sottoclasse —" }].concat(cls.subclasses.map((x) => ({ v: x.id, t: x.name })));
       out += card("Sottoclasse", `<label class="form">${sel("subclassId", so, c.subclassId)}</label>${d.sub ? `<p class="muted">${esc(d.sub.tagline)}</p>` : ""}`);
     } else out += card("Sottoclasse", `<p class="muted">Si sceglie al livello 3.</p>`);
-
-    // scelte
     if (d.slots.length) {
-      const rows = d.slots.map((s) => {
-        const missing = !d.choices[s.id];
-        return `<div class="slot ${missing ? "need" : ""}"><div class="slabel"><b>${esc(s.label)}</b> <span class="chip tiny">Lv ${s.level}</span>${missing ? ' <span class="chip tiny warn">da scegliere</span>' : ""}</div>${optionSelect(c, d, s)}</div>`;
+      const rows = d.slots.map((x) => {
+        const miss = !d.choices[x.id];
+        return `<div class="slot ${miss ? "need" : ""}"><div class="slabel"><b>${esc(x.label)}</b> <span class="chip tiny">Lv ${x.level}</span>${miss ? ' <span class="chip tiny warn">da scegliere</span>' : ""}</div>${optionSelect(c, d, x)}</div>`;
       }).join("");
       const m14 = cls.masteries && c.level >= 14 && !d.isSB ? `<div class="slot"><div class="slabel"><b>Weapon Mastery (3)</b> <span class="chip tiny">Lv 14</span></div><div class="auto">Maestria completa: tutti i tipi di arma.</div></div>` : "";
       out += card("Le tue scelte", `${d.isSB ? '<p class="muted small">Spellblade: al posto di Combat Tactics e Weapon Mastery scegli un altro Commander’s Order oppure un incantesimo di tier 1 o inferiore.</p>' : ""}${rows}${m14}
         <p class="muted small"><b>Rigorous Training.</b> Durante un Safe Rest in cui ti addestri con il gruppo o altri soldati puoi cambiare queste scelte: modificale qui quando vuoi.</p>`);
-    }
+    } else out += card("Le tue scelte", '<p class="muted">Nessuna scelta da fare per ora.</p>');
+    return out;
+  }
 
-    // abilità attive: orders, mastery (testo)
-    const orders = d.orders.map((id) => d.cls.orders.find((o) => o.id === id)).filter(Boolean);
-    if (orders.length) out += card("Commander’s Orders", orders.map((o) => det("ord-" + o.id, `<b>${esc(o.name)}</b> <span class="chip tiny">${esc(o.cost)}</span>`, para(NIM.orderText(o, d.isSB)))).join(""));
-    if (d.masteries.length) out += card("Weapon Mastery", d.masteries.map((id) => d.cls.masteries.find((m) => m.id === id)).filter(Boolean).map((m) => det("mas-" + m.id, `<b>${esc(m.name)}</b>`, para(m.text))).join(""));
-    if (d.isSB) {
-      const sp = d.spells.map((id) => NIM.SPELL_BY_ID[id]).filter(Boolean);
-      out += card("Incantesimi (Spellblade)", `<p class="muted small">Mana: <b>${c.mana}/${d.maxMana}</b> (INT, ottenuto all’inizio dello scontro). Costo = Tier; i cantrip sono gratis. Spellforge: all’iniziativa puoi lanciare Enchant Weapon gratis.</p>` +
-        (sp.length ? sp.map((s) => spellDet(s, d)).join("") : '<p class="muted">Nessun incantesimo scelto ancora (vedi “Le tue scelte”).</p>'));
-    }
-
-    if (d.arsenal && d.arsenal.length) out += card("Savage Arsenal", d.arsenal.map((id) => cls.arsenal.find((x) => x.id === id)).filter(Boolean).map((a) => det("sa-" + a.id, `<b>${esc(a.name)}</b> <span class="chip tiny">${esc(a.cost)}</span>`, para(a.text))).join(""));
-    if (d.mm) out += card("Muscle Spells", `<p class="muted small">Si lanciano se hai almeno il numero di Fury Dice richiesto (REQ). FD = i tuoi Fury Dice.</p>` + cls.muscleSpells.map((sp) => det("ms-" + sp.id, `<b>${esc(sp.name)}</b> <span class="chip tiny">REQ ${Math.max(0, sp.req - d.fdReq)} FD</span> <span class="chip tiny">${esc(sp.cost)}</span>`, para(sp.text))).join(""));
-
-    // capacità di classe già ottenute
+  function classProgress(c, d) {
+    const cls = d.cls;
+    let out = card("Livello " + c.level + " / 20", `<div class="btnrow wrap">${c.level < 20 ? `<button class="btn primary" data-act="open-levelup">Sali al livello ${c.level + 1}</button>` : '<span class="chip good">Livello massimo</span>'}${c.level > 1 ? '<button class="btn ghost" data-act="levelup-undo">Annulla ultimo livello</button>' : ""}</div>
+      <p class="muted small">Il level up apre una guida: PF, aumento di caratteristica, nuove capacità e sottoclasse. Il GM decide quando sali (di solito durante un Safe Rest).</p>`);
     const shown = (f) => !(f.replacedBy && f.replacedBy === d.subId);
-    const got = cls.features.filter((f) => f.level <= c.level && shown(f));
-    out += card("Capacità di classe", got.map((f) => det("feat-" + f.level + f.name, `<b>${esc(f.name)}</b> <span class="chip tiny">Lv ${f.level}</span>`, para(f.text))).join(""));
-
-    // capacità sottoclasse
-    if (d.sub) {
-      const sf = d.sub.features.filter((f) => f.level <= c.level);
-      out += card(esc(d.sub.name), `<p class="muted small">${esc(d.sub.tagline)}</p>` + sf.map((f) => f.items.map(([n, t]) => det("sf-" + d.sub.id + f.level + n, `<b>${esc(n)}</b> <span class="chip tiny">Lv ${f.level}</span>`, para(t))).join("")).join(""));
-    }
-
-    // prossimi livelli
     const next = cls.features.filter((f) => f.level > c.level && shown(f));
     if (next.length) out += card("Prossimi livelli", det("nextlv", "Mostra le capacità future", next.map((f) => `<p><span class="chip tiny">Lv ${f.level}</span> <b>${esc(f.name)}.</b> ${esc(f.text)}</p>`).join("")));
-
     return out;
-  };
+  }
 
   function spellDet(s, d) {
     const sc = NIM.SCHOOLS[s.school][0];
@@ -351,12 +381,13 @@
   }
 
   V.zaino = (c, d) => {
-    const over = d.slotsUsed > d.slotsCap;
+    const over = d.slotsOn && d.slotsUsed > d.slotsCap;
     const pct = Math.min(100, (d.slotsUsed / d.slotsCap) * 100);
-    let h = `<div class="hpbar slots ${over ? "dy" : ""}"><i style="width:${pct}%"></i><span>Slot ${d.slotsUsed} / ${d.slotsCap}${d.goldSlots ? ` <em>(monete: ${d.goldSlots})</em>` : ""}</span></div>
+    let h = (d.slotsOn ? `<div class="hpbar slots ${over ? "dy" : ""}"><i style="width:${pct}%"></i><span>Slot ${d.slotsUsed} / ${d.slotsCap}${d.goldSlots ? ` <em>(monete: ${d.goldSlots})</em>` : ""}</span></div>` : "") + `
       <div class="money"><label>Oro (gp)<input type="number" inputmode="numeric" min="0" data-bind="gp" data-type="num" value="${c.gp}"></label><label>Argento (sp)<input type="number" inputmode="numeric" min="0" data-bind="sp" data-type="num" value="${c.sp}"></label></div>
-      <p class="muted small">10 sp = 1 gp. 500 gp occupano 1 slot. Capienza = 10 + STR. 1 slot: arma a una mano, scudo, armatura indossata, pila di giavellotti, 2 pozioni. 2 slot: arma a due mani, armatura non indossata.</p>`;
-    let out = card("Zaino", h);
+      <label class="check"><input type="checkbox" data-act="slots-toggle" ${d.slotsOn ? "checked" : ""}> Conteggio slot dello zaino attivo</label>
+      ${d.slotsOn ? `<p class="muted small">10 sp = 1 gp. 500 gp occupano 1 slot. Capienza = 10 + STR. 1 slot: arma a una mano, scudo, armatura indossata, pila di giavellotti, 2 pozioni. 2 slot: arma a due mani, armatura non indossata.</p>` : `<p class="muted small">10 sp = 1 gp. Gli slot sono disattivati: nessun limite di peso.</p>`}`;
+    let out = pinsCard(c, "zaino") + card("Zaino", h);
     if (d.warnings.length) out += `<div class="banner warn">${d.warnings.map(esc).join("<br>")}</div>`;
     out += card("In sintesi", `<div class="grid3 small"><div class="kv"><small>Defense</small><b>${d.defense}</b></div><div class="kv"><small>Armatura</small><b class="sm">${esc(d.armorItem ? d.armorItem.name : "nessuna")}</b></div><div class="kv"><small>Scudo</small><b class="sm">${esc(d.shieldItem ? d.shieldItem.name : "nessuno")}</b></div></div>`);
     KIND_ORDER.forEach(([k, label]) => {
@@ -420,14 +451,12 @@
       return `<div class="charrow ${c.id === S.db.activeId ? "active" : ""}"><button class="open" data-act="char-open" data-id="${c.id}"><b>${esc(c.name)}</b><small>${esc(anc ? anc.name : "")} · ${esc(cls.name)} · Lv ${c.level}</small></button>
         <button class="icon small" data-act="char-menu" data-id="${c.id}" aria-label="Opzioni">⋯</button></div>`;
     }).join("");
-    const standalone = window.matchMedia && matchMedia("(display-mode: standalone)").matches || navigator.standalone;
     return `<div class="home">
       <div class="brand"><div class="logo">${UI.dieSvg}</div><div><h1>Taccuino dell’Eroe</h1><p class="muted">Scheda personaggio per Nimble · non ufficiale</p></div></div>
       ${S.storageOK ? "" : '<div class="banner bad">Il salvataggio locale non è disponibile in questo browser: esporta i tuoi eroi per non perderli.</div>'}
       ${UI.langBox()}
       ${chars.length ? `<section class="card"><h2>I tuoi eroi</h2>${rows}</section>` : '<section class="card"><p>Nessun eroe ancora. Creane uno per iniziare!</p></section>'}
-      <div class="btnrow wrap pad"><button class="btn primary" data-act="open-create">+ Nuovo eroe</button><button class="btn" data-act="import-open">Importa file</button><button class="btn ghost" data-act="florian">Esempio: Florian (Commander)</button><button class="btn ghost" data-act="crush">Esempio: Crush (Berserker)</button>${chars.length ? '<button class="btn ghost" data-act="tab" data-tab="scheda">Torna alla scheda</button>' : ""}</div>
-      ${standalone ? "" : '<section class="card"><h2>Installa l’app</h2><p class="small">Dal menu del browser scegli <b>“Installa app”</b> / <b>“Aggiungi a schermata Home”</b> (su iPhone: Condividi → Aggiungi alla schermata Home). Crea gli eroi <b>dopo</b> l’installazione, così i dati stanno nell’app installata.</p></section>'}
+      <div class="btnrow wrap pad"><button class="btn primary" data-act="open-create">+ Nuovo eroe</button><button class="btn" data-act="import-open">Importa file</button>${chars.length ? '<button class="btn ghost" data-act="tab" data-tab="scheda">Torna alla scheda</button>' : ""}</div>
       <section class="card notice"><p class="small"><b>${esc(LICENSE_TXT)}</b></p><p class="small muted">${esc(SRD_TXT)}</p></section>
     </div>`;
   };

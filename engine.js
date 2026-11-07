@@ -22,7 +22,7 @@
       statMod: { STR: 0, DEX: 0, INT: 0, WIL: 0 },
       levels: [], skillPts: {}, hp: cls.startHP, tmp: 0, wounds: 0, hd: 1, mana: 0, fury: 0,
       combat: { active: false, round: 1, actions: 3, attacks: 0, react: {}, dice: 0, conds: [], raging: false, rageTurn: false },
-      used: {}, choices: {}, items: [], gp: 0, sp: 0, languages: "", notes: "", boon: "",
+      used: {}, pins: [], choices: {}, items: [], gp: 0, sp: 0, languages: "", notes: "", boon: "",
       manual: { hp: 0, defense: 0, init: 0, speed: 0, hd: 0, wounds: 0 },
       created: Date.now(), updated: Date.now(),
     };
@@ -49,6 +49,40 @@
     if (!base && !it.name) return null;
     c.items.push(it);
     return it;
+  };
+  // Prezzo in monete d'argento (10 sp = 1 gp). "—" = gratis; null = prezzo non calcolabile (es. "5–50 gp").
+  NIM.costSp = function (str) {
+    const t = String(str == null ? "" : str).trim();
+    if (t === "—" || t === "" || t === "-") return 0;
+    const m = /^([\d,]+)\s*(gp|sp)$/i.exec(t);
+    if (!m) return null;
+    const v = parseInt(m[1].replace(/,/g, ""), 10);
+    return m[2].toLowerCase() === "gp" ? v * 10 : v;
+  };
+  NIM.coinsSp = (c) => (c.gp || 0) * 10 + (c.sp || 0);
+  // Toglie sp monete d'argento dal portafoglio (usa prima gli sp per la parte "spicciola", poi gli gp). false se non bastano.
+  NIM.payCoins = function (c, sp) {
+    if (NIM.coinsSp(c) < sp) return false;
+    let g = Math.floor(sp / 10), s = sp % 10;
+    if (c.sp < s) { const k = Math.ceil((s - c.sp) / 10); c.gp -= k; c.sp += k * 10; }
+    c.sp -= s;
+    if (c.gp < g) { c.sp -= (g - c.gp) * 10; c.gp = 0; } else c.gp -= g;
+    return true;
+  };
+  NIM.fmtCoins = function (sp) {
+    const g = Math.floor(sp / 10), s = sp % 10;
+    return [g ? g + " gp" : "", s ? s + " sp" : ""].filter(Boolean).join(" ") || "0 gp";
+  };
+  // Aggiunge qty esemplari dal catalogo; gli oggetti generici identici (non armi/armature/scudi) si sommano.
+  NIM.addCatalog = function (c, ref, qty) {
+    qty = Math.max(1, Math.round(qty) || 1);
+    const base = NIM.ITEM_BY_ID[ref];
+    if (!base) return null;
+    if (base.kind === "misc") {
+      const same = c.items.find((x) => x.ref === ref && !x.name && x.slotsOverride == null && !x.notes);
+      if (same) { same.qty = (same.qty || 1) + qty; return same; }
+    }
+    return NIM.addItem(c, ref, { qty });
   };
   NIM.resolveItem = function (inst) {
     const base = NIM.ITEM_BY_ID[inst.ref] || {};
@@ -311,6 +345,7 @@
     });
     d.goldSlots = c.gp > 0 ? Math.ceil(c.gp / 500) : 0;
     d.slotsUsed = used + d.goldSlots;
+    d.slotsOn = !c.noSlots;
 
     // abilità
     const skills = NIM.SKILLS.map((sk) => {
@@ -346,9 +381,9 @@
     const u = [];
     if (cls.id === "commander") u.push({ key: "cs-enc", label: "Coordinated Strike", per: "enc", max: 1, src: "Class" });
     if (cls.id === "commander" && lvl >= 5) {
+      // un'unica riga: pool di INT usi per Safe Rest (+1 ai livelli 9/13/17); vale comunque il limite di 1 per round
       const pool = Math.max(0, st.INT) + [9, 13, 17].filter((L) => lvl >= L).length;
-      u.push({ key: "cs-pool", label: "Coordinated Strike (pool)", per: "safe", max: pool, src: "Master Commander" });
-      u.push({ key: "cs-round", label: "Coordinated Strike (max 1/round)", per: "round", max: 1, src: "Master Commander" });
+      u.push({ key: "cs-pool", label: "Coordinated Strike (usi extra, max 1/round)", per: "safe", max: pool, src: "Master Commander" });
     }
     if (cls.id === "berserker") {
       if (lvl >= 2) u.push({ key: "ancients", label: "One with the Ancients", per: "safe", max: 1, src: "Class" });
@@ -381,7 +416,35 @@
     if (subId === "bulwark" && lvl >= 11) u.push({ key: "bulwark-taunt", label: "Taunting Strike", per: "turn", max: 1, src: "Bulwark" });
     if (d.anc) d.anc.uses.forEach((x) => u.push(Object.assign({ src: d.anc.name }, x)));
     if (d.bg) d.bg.uses.forEach((x) => u.push(Object.assign({ src: d.bg.name }, x)));
+    NIM.attachUseTexts(c, d, u);
     return u;
+  };
+
+  /* descrizione (testo del manuale) di ogni abilità con usi: serve alla scheda Combat */
+  NIM.attachUseTexts = function (c, d, u) {
+    const cls = d.cls, lvl = c.level;
+    const base = (n) => n.toLowerCase().replace(/\s*\(\d+\)$/, "").trim();
+    const feat = (name) => {
+      const k = base(name), parts = [];
+      cls.features.filter((f) => f.level <= lvl && base(f.name) === k).forEach((f) => parts.push(f.text));
+      if (d.sub) d.sub.features.filter((f) => f.level <= lvl).forEach((f) => f.items.forEach(([n, t]) => { if (base(n) === k) parts.push(t); }));
+      return parts.join("\n");
+    };
+    const NAMES = { "cs-enc": "Coordinated Strike!", "cs-pool": "Master Commander", ancients: "One with the Ancients", "blood-frenzy": "Blood Frenzy",
+      onslaught: "Onslaught", unbreakable: "Unbreakable", "boundless-flames": "BOUNDLESS FLAMES", imfine: "I’m Fine! Totally Fine!",
+      "arena-show": "Showstopping Strike", "arena-glory": "Glory Seeker", "arena-strategy": "Remarkable Strategy", "bulwark-taunt": "Taunting Strike" };
+    u.forEach((x) => {
+      if (x.text) return;
+      let t = "";
+      if (NAMES[x.key]) t = feat(NAMES[x.key]);
+      else if (x.key === "rampage" || x.key === "deathless") { const a = byId(cls.arsenal || [], x.key === "deathless" ? "deathless-rage" : "rampage"); t = a ? a.text : ""; }
+      else if (x.key.startsWith("ms-")) { const sp = byId(cls.muscleSpells || [], x.key.slice(3)); t = sp ? sp.text.replace(/\n/g, " ") : ""; }
+      else if (x.key.startsWith("mast-")) { const mm = byId(cls.masteries || [], x.key.slice(5)); t = mm ? mm.text : ""; }
+      else if (x.src === "Order") { const o = (cls.orders || []).find((q) => q.uses && q.uses.key === x.key); t = o ? NIM.orderText(o, d.isSB) : ""; }
+      else if (d.anc && x.src === d.anc.name) t = d.anc.text;
+      else if (d.bg && x.src === d.bg.name) t = d.bg.text;
+      if (t) x.text = t;
+    });
   };
 
   NIM.useLeft = (c, key, max) => Math.max(0, max - (c.used[key] || 0));
