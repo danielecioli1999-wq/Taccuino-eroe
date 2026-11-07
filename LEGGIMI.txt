@@ -63,12 +63,16 @@ LINGUA E LIVELLO
   caratteristica; i PF di ogni livello sono la media del dado vita e puoi scrivere i PF massimi
   che vuoi. Le scelte di classe restano da fare nella tab Classe.
 
+CLASSI
+- Commander, Berserker, Shadowmancer e Cheat. Alla creazione scegli la classe; i manuali delle altre classi
+  verranno aggiunti nelle prossime versioni.
+
 BACKUP
 Altro > Eroi e backup: esporta un file e salvalo (es. su Drive). I dati stanno solo sul telefono.
 
 AGGIORNARE L'APP
 Quando ti mando una nuova versione: apri sw.js e aumenta il numero in VERSION
-(taccuino-v8 -> taccuino-v9), poi nel repository usa "Add file > Upload files" e
+(taccuino-v9 -> taccuino-v10), poi nel repository usa "Add file > Upload files" e
 trascina di nuovo i file (quelli con lo stesso nome vengono sostituiti). I personaggi salvati
 non si perdono. La build dell'APK riparte da sola e sostituisce quella nelle Releases.
 

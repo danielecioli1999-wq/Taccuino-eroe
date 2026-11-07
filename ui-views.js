@@ -170,7 +170,7 @@
   function attacksCard(c, d) {
     const rows = d.attacks.map((a) => {
       const props = a.props.map((p) => `<span class="chip tiny">${esc(p)}</span>`).join("");
-      return `<div class="atk"><div class="atxt"><b>${esc(a.name)}</b><small>${a.n}d${a.die}${a.mod ? fmt(a.mod) : ""} ${esc(a.dtype)} <span class="muted">(${a.stat})</span></small><div class="chips tight">${props}${a.noCrit ? '<span class="chip tiny bad">no crit</span>' : ""}${a.fury ? `<span class="chip tiny good">+${a.fury} Fury Dice (d${d.furySize})</span>` : ""}</div></div>
+      return `<div class="atk"><div class="atxt"><b>${esc(a.name)}</b><small>${a.n}d${a.die}${a.mod ? fmt(a.mod) : ""} ${esc(a.dtype)} <span class="muted">(${a.stat})</span></small><div class="chips tight">${props}${a.noCrit ? '<span class="chip tiny bad">no crit</span>' : ""}${(a.notes || []).map((n) => `<span class="chip tiny good">${esc(n)}</span>`).join("")}${a.fury ? `<span class="chip tiny good">+${a.fury} Fury Dice (d${d.furySize})</span>` : ""}</div></div>
         </div>`;
     }).join("");
     const w = d.warnings.length ? `<div class="banner warn">${d.warnings.map(esc).join("<br>")}</div>` : "";
@@ -230,6 +230,45 @@
       <p class="muted small">Usa + e − per aggiungere o togliere Fury Dice (a 0 la Rage finisce). “That all you got?!” è in <i>Subisci danno</i>.</p>`);
   }
 
+  /* ---------- Shadowmancer ---------- */
+  function shadowCard(c, d) {
+    if (d.cls.id !== "shadowmancer") return "";
+    const s = d.sm;
+    const over = c.shadows > s.limit;
+    let h = `<div class="row between"><span class="lbl">Shadows <b>${c.shadows}/${s.limit}</b> <small class="muted">d${s.die} · Shadow Limit = INT</small> ${over ? chip("oltre il limite", "warn") : ""}</span>${UI.stepper("shadow-step", {}, c.shadows, { minDisabled: c.shadows <= 0 })}</div>
+      <p class="muted small">Attacco di <b>Command Shadows</b> con gli Shadow attuali: <b>${c.shadows}d${s.die}</b> (somma tutti i dadi e trattali come un unico attacco contro l’armatura).</p>
+      <div class="btnrow wrap">
+        <button class="btn" data-act="shadow-summon">Summon Shadow (1 azione) +${s.perCast}</button>
+        <button class="btn" data-act="shadow-command" ${(c.used["cmd-shadows"] || 0) >= 1 ? "disabled" : ""}>Command Shadows (1 azione)</button>
+      </div>`;
+    if (s.reaver) {
+      h += `<div class="row between"><span class="lbl">Bonescythe ${c.bonescythe ? chip("evocata", "good") : chip("non evocata")}</span>
+        <span class="btnrow"><button class="btn" data-act="scythe-summon" ${c.bonescythe ? "disabled" : ""}>Summon Bonescythe (1 azione)</button><button class="btn ghost" data-act="scythe-break" ${c.bonescythe ? "" : "disabled"}>Frantumata</button></span></div>`;
+    }
+    if (c.level >= 20) h += `<p class="muted small"><b>Greater Shadow</b> (Eldritch Usurper, 1/scontro): al posto di Summon Shadow evochi un minion 5d12 che, morendo, si divide in 5 Shadow (senza limite).</p>`;
+    if (s.armor) h += `<p class="muted small"><b>Armor of Shadows</b> attiva: ogni danno che subisci scende del numero di Shadow (automatico in “Subisci danno”).</p>`;
+    h += `<p class="muted small">Gli Shadow spariscono a fine scontro. “Summon Shadow” non ha effetto se hai già il limite di Shadow.</p>`;
+    return card("Shadows", h);
+  }
+
+  function spellsCard(c, d) {
+    if (d.cls.id !== "shadowmancer" || !d.sm.known.length) return "";
+    const s = d.sm;
+    const left = Math.max(0, s.pilfered - (c.used.pilfered || 0));
+    const rows = s.known.map((k) => {
+      const sp = k.spell;
+      const label = sp.tier === 0 ? "Cantrip" : "Tier " + sp.tier + (k.mode === "pilfered" && s.maxTier > sp.tier ? " → " + s.maxTier : "");
+      const btn = k.mode === "pilfered" && left <= 0 ? "Lancia (!)" : "Lancia";
+      const note = k.mode === "special" ? `<small class="muted">${esc(k.note)}</small>` : k.mode === "reaver" ? '<small class="muted">Costo: sacrifica Shadow (Shadow Exploit) o 1 Ferita (My Blood, My Power)</small>' : "";
+      return `<div class="use2"><div class="atk"><div class="atxt"><b>${esc(sp.name)}</b> <span class="chip tiny school-${sp.school}">${NIM.SCHOOLS[sp.school][0]}</span> <span class="chip tiny">${label}</span> <span class="chip tiny">${esc(sp.cost)}</span>${note}</div>
+        <button class="btn" data-act="shadow-spell" data-id="${sp.id}">${btn}</button></div>${det("csp-" + sp.id, "Descrizione", `<p>${esc(sp.text)}</p>${sp.up ? `<p><b>Upcast:</b> ${esc(sp.up)}</p>` : ""}${sp.high ? `<p><b>High Levels:</b> ${esc(sp.high)}</p>` : ""}`, "udesc")}</div>`;
+    }).join("");
+    const head = s.reaver
+      ? `<p class="muted small">Hollow One: non puoi usare Pilfered Power. Lanci gli incantesimi a livelli con Shadow Exploit o My Blood, My Power (tier massimo sbloccato: <b>${s.maxTier}</b>).</p>`
+      : `<p class="muted small"><b>Pilfered Power</b>: ${left}/${s.pilfered} usi (DEX, per Safe Rest). Gli incantesimi a livelli costano 0 mana e vengono lanciati al tier massimo sbloccato (<b>${s.maxTier}</b>). Senza usi il Patron ti infligge danni pari a metà dei PF max${c.level >= 12 ? " (Greedy Pact: TS di FOR 10–19 → solo 10 PF; 20+ → nessun danno e incantesimo di 1 tier superiore)" : ""}.</p>`;
+    return card("Incantesimi", head + rows);
+  }
+
   function arsenalCard(c, d) {
     if (!d.arsenal || !d.arsenal.length) return "";
     const rows = d.arsenal.map((id) => d.cls.arsenal.find((x) => x.id === id)).filter(Boolean).map((a) => {
@@ -253,7 +292,7 @@
     return card("Muscle Spells", `<p class="muted small">FD (Fury Dice attuali): <b>${c.fury}</b> · STR ${fmt(d.stats.STR)}. I Fury Dice non si spendono per lanciare: servono solo come requisito.</p>${rows}`);
   }
 
-  V.combat = (c, d) => vitalsCard(c, d) + turnCard(c, d) + pinsCard(c, "combat") + rageCard(c, d) + muscleCard(c, d) + arsenalCard(c, d) + resourcesCard(c, d) + attacksCard(c, d) + tacticsCard(c, d) + usesCard(c, d) + condsCard(c, d);
+  V.combat = (c, d) => vitalsCard(c, d) + turnCard(c, d) + pinsCard(c, "combat") + shadowCard(c, d) + rageCard(c, d) + spellsCard(c, d) + muscleCard(c, d) + arsenalCard(c, d) + resourcesCard(c, d) + attacksCard(c, d) + tacticsCard(c, d) + usesCard(c, d) + condsCard(c, d);
 
   /* ---------- CLASSE ---------- */
   function optionSelect(c, d, slot) {
@@ -307,6 +346,23 @@
       const sp = d.spells.map((id) => NIM.SPELL_BY_ID[id]).filter(Boolean);
       out += card("Incantesimi (Spellblade)", `<p class="muted small">Mana: <b>${c.mana}/${d.maxMana}</b> (INT, ottenuto all’inizio dello scontro). Costo = Tier; i cantrip sono gratis. Spellforge: all’iniziativa puoi lanciare Enchant Weapon gratis.</p>` +
         (sp.length ? sp.map((x) => spellDet(x, d)).join("") : '<p class="muted">Nessun incantesimo scelto ancora (vedi “Scelte”).</p>'));
+    }
+    if (cls.id === "cheat") {
+      if (d.underhanded.length) out += card("Underhanded Abilities", d.underhanded.map((id) => cls.underhanded.find((x) => x.id === id)).filter(Boolean).map((a) => ab(c, "ua-" + a.id, `<b>${esc(a.name)}</b> <span class="chip tiny">${esc(a.cost)}</span>`, a.text, a.name, a.cost)).join(""));
+      if (d.gambits.length) out += card("Honorable Gambits", d.gambits.map((id) => cls.gambits.find((x) => x.id === id)).filter(Boolean).map((a) => ab(c, "hg-" + a.id, `<b>${esc(a.name)}</b> <span class="chip tiny">${esc(a.cost)}</span>`, a.text, a.name, a.cost)).join(""));
+    }
+    if (cls.id === "shadowmancer") {
+      const cn = cls.cantrips.filter((x) => !(x.id === "shadow-blast" && d.sm.reaver));
+      out += card("Cantrip dello Shadowmancer", cn.map((x) => ab(c, "cn-" + x.id, `<b>${esc(x.name)}</b> <span class="chip tiny">${esc(x.cost)}</span>`, x.text, x.name, x.cost)).join(""));
+      if (d.lesser.length) out += card("Lesser Shadow Invocations", d.lesser.map((id) => cls.lesser.find((x) => x.id === id)).filter(Boolean).map((a) => ab(c, "li-" + a.id, `<b>${esc(a.name)}</b> <span class="chip tiny">${esc(a.cost)}</span>`, a.text, a.name, a.cost)).join(""));
+      if (d.greater.length) out += card("Greater Shadow Invocations", d.greater.map((id) => cls.greater.find((x) => x.id === id)).filter(Boolean).map((a) => ab(c, "gi-" + a.id, `<b>${esc(a.name)}</b> <span class="chip tiny">${esc(a.cost)}</span>`, a.text, a.name, a.cost)).join(""));
+      const kn = d.sm.known;
+      if (kn.length || d.spells.length) {
+        const util = new Set(d.spells);
+        if (c.level >= 14) NIM.SPELLS.filter((x) => x.utility && x.school === "necrotic").forEach((x) => util.add(x.id));
+        const ut = Array.from(util).map((id) => NIM.SPELL_BY_ID[id]).filter(Boolean);
+        out += card("Incantesimi noti", `<p class="muted small">Tier massimo sbloccato: <b>${d.sm.maxTier}</b>. Tutti gli incantesimi sono lanciati a quel tier.</p>` + kn.map((k) => spellDet(k.spell, d)).join("") + (ut.length ? `<p class="muted small"><b>Utility</b></p>` + ut.map((x) => spellDet(x, d)).join("") : ""));
+      }
     }
     if (d.arsenal && d.arsenal.length) out += card("Savage Arsenal", d.arsenal.map((id) => cls.arsenal.find((x) => x.id === id)).filter(Boolean).map((a) => ab(c, "sa-" + a.id, `<b>${esc(a.name)}</b> <span class="chip tiny">${esc(a.cost)}</span>`, a.text, a.name, a.cost)).join(""));
     if (d.mm) out += card("Muscle Spells", `<p class="muted small">Si lanciano se hai almeno il numero di Fury Dice richiesto (REQ). FD = i tuoi Fury Dice.</p>` + cls.muscleSpells.map((sp) => ab(c, "ms-" + sp.id, `<b>${esc(sp.name)}</b> <span class="chip tiny">REQ ${Math.max(0, sp.req - d.fdReq)} FD</span> <span class="chip tiny">${esc(sp.cost)}</span>`, sp.text, sp.name, sp.cost)).join(""));

@@ -20,7 +20,7 @@
       motivation: o.motivation || "", classId: cls.id, subclassId: "", level: 1,
       stats: Object.assign({ STR: 0, DEX: 0, INT: 0, WIL: 0 }, o.stats || {}),
       statMod: { STR: 0, DEX: 0, INT: 0, WIL: 0 },
-      levels: [], skillPts: {}, hp: cls.startHP, tmp: 0, wounds: 0, hd: 1, mana: 0, fury: 0,
+      levels: [], skillPts: {}, hp: cls.startHP, tmp: 0, wounds: 0, hd: 1, mana: 0, fury: 0, shadows: 0, bonescythe: false,
       combat: { active: false, round: 1, actions: 3, attacks: 0, react: {}, dice: 0, conds: [], raging: false, rageTurn: false },
       used: {}, pins: [], choices: {}, items: [], gp: 0, sp: 0, languages: "", notes: "", boon: "",
       manual: { hp: 0, defense: 0, init: 0, speed: 0, hd: 0, wounds: 0 },
@@ -28,7 +28,7 @@
     };
     NIM.SKILLS.forEach((s) => (c.skillPts[s.id] = 0));
     if (o.gear === false) c.gp = 50;
-    else cls.startGear.forEach((g) => NIM.addItem(c, g.ref, { equipped: true }));
+    else cls.startGear.forEach((g) => NIM.addItem(c, g.ref, { equipped: true, qty: g.qty || 1 }));
     return c;
   };
 
@@ -201,7 +201,9 @@
     c.levels.forEach((l) => (l.stat || []).forEach((s) => { if (incs[s] !== undefined) incs[s]++; }));
     d.statIncs = incs;
     d.stats = {};
-    NIM.STATS.forEach((s) => (d.stats[s] = c.stats[s] + incs[s] + (c.statMod[s] || 0)));
+    const early = NIM.resolveChoices(c);
+    const statBonus = cls.statBonus ? cls.statBonus(Object.values(early.res)) : {};
+    NIM.STATS.forEach((s) => (d.stats[s] = c.stats[s] + incs[s] + (c.statMod[s] || 0) + (statBonus[s] || 0)));
     const st = d.stats;
 
     // salvezze
@@ -212,7 +214,7 @@
     d.keyDC = cls.keyStats.map((k) => ({ stat: k, dc: 10 + st[k] }));
 
     // scelte di classe
-    const { slots, res } = NIM.resolveChoices(c);
+    const { slots, res } = early;
     d.slots = slots;
     d.choices = res;
     d.pending = slots.filter((s) => !res[s.id]).length;
@@ -225,6 +227,10 @@
     d.isSB = subId === "spellblade";
 
     d.arsenal = chosen.filter((x) => x.startsWith("arsenal:")).map((x) => x.slice(8));
+    d.lesser = chosen.filter((x) => x.startsWith("lesser:")).map((x) => x.slice(7));
+    d.greater = chosen.filter((x) => x.startsWith("greater:")).map((x) => x.slice(8));
+    d.underhanded = chosen.filter((x) => x.startsWith("underhanded:")).map((x) => x.slice(12));
+    d.gambits = chosen.filter((x) => x.startsWith("gambit:")).map((x) => x.slice(7));
 
     // modificatori di classe (valori comuni; il Berserker li usa davvero)
     d.initAdv = !!m.initAdv || d.orders.includes("move-it");
@@ -246,6 +252,31 @@
       if (subId === "red-mist" && lvl >= 15 && c.combat.raging) classSpeed += 2;
       d.mm = subId === "muscle-mage";
       d.fdReq = d.mm && lvl >= 11 ? 2 : 0; // Flexpertise
+    }
+
+    if (cls.id === "shadowmancer") {
+      const reaver = subId === "reaver";
+      const hasG = (id) => d.greater.includes(id);
+      if (hasG("fiendish-boon-dex") || hasG("fiendish-boon-int")) m.maxHD -= 1;
+      d.sm = {
+        reaver,
+        limit: Math.max(0, st.INT),
+        perCast: 1 + Math.floor(lvl / 5),
+        blastN: 1 + Math.floor(lvl / 5),
+        die: hasG("shadow-magus") ? 10 : 12,
+        maxTier: cls.maxTierAt(lvl),
+        pilfered: lvl >= 2 && !reaver ? Math.max(0, st.DEX) : 0,
+        armor: hasG("armor-of-shadows"),
+        known: [],
+      };
+      d.sm.known = cls.knownSpells(c, d);
+      // Shadow Blast (non per il Reaver) e Bonescythe (solo Reaver, finché è evocata)
+      d.sm.blast = !reaver;
+      d.sm.scytheN = 2 + Math.floor(lvl / 5);
+    }
+
+    if (cls.id === "cheat") {
+      d.ch = { sneak: cls.sneakAt(lvl), hs: subId === "honorseeker" };
     }
 
     // PF, dadi vita, ferite
@@ -293,6 +324,10 @@
       extraDef += st.STR;
       parts.push(["Siege Veteran (arma a 2 mani)", st.STR]);
     }
+    if (d.underhanded.includes("misdirection") && Math.max(0, st.INT) > 0) {
+      extraDef += Math.max(0, st.INT);
+      parts.push(["Misdirection (INT)", Math.max(0, st.INT)]);
+    }
     if (m.defense) parts.push(["Ancestry/Background", m.defense]);
     if (c.manual.defense) parts.push(["Modificatore manuale", c.manual.defense]);
     d.defenseParts = parts;
@@ -307,11 +342,11 @@
     const armorProf = (a) => cls.armor.includes(a.armor) || (subId === "bulwark" && a.armor === "plate");
     armors.forEach((a) => {
       if (!armorProf(a)) d.warnings.push(a.name + ": senza competenza (Defend costa 1 azione in più).");
-      if (a.req > st.STR) d.warnings.push(a.name + ": richiede STR " + a.req + ".");
+      if (a.req > 0 && a.req > st.STR) d.warnings.push(a.name + ": richiede STR " + a.req + ".");
     });
     shields.forEach((s) => {
       if (!cls.armor.includes("shield")) d.warnings.push(s.name + ": senza competenza (Defend costa 1 azione in più).");
-      if (s.req > st.STR) d.warnings.push(s.name + ": richiede STR " + s.req + ".");
+      if (s.req > 0 && s.req > st.STR) d.warnings.push(s.name + ": richiede STR " + s.req + ".");
     });
     if (shields.length > 1) d.warnings.push("Più scudi equipaggiati: conto solo il migliore.");
     if (armors.length > 1) d.warnings.push("Più armature equipaggiate: conto solo la migliore.");
@@ -333,6 +368,33 @@
     });
     const un = cls.unarmed ? cls.unarmed(d) : { die: 4, noCrit: false };
     d.attacks.push({ uid: "unarmed", name: "Unarmed Strike", n: 1, die: un.die, stat: "STR", mod: st.STR, dtype: "bludgeoning", props: [], vicious: false, noCrit: un.noCrit });
+    if (cls.id === "cheat") {
+      d.attacks.forEach((a) => {
+        const notes = [];
+        if (d.ch.hs) notes.push("Tenacious Fighter: +" + d.ch.sneak + " vs Upper Hand");
+        else {
+          notes.push("Sneak Attack: +" + d.ch.sneak + " on crit");
+          const thrown = a.props.some((p) => /^Thrown/.test(p));
+          if (!a.ranged || (thrown && d.underhanded.includes("trickshot"))) notes.push("Vicious Opportunist vs Distracted");
+        }
+        a.notes = notes;
+      });
+    }
+    if (cls.id === "shadowmancer") {
+      const sm = d.sm, extra = [];
+      if (sm.blast) {
+        const range = 8 + (d.greater.includes("shadow-spear") ? 8 : 0);
+        const props = ["Range " + range, "1/round"];
+        if (d.greater.includes("repelling-blast")) props.push("On hit: Knockback 2");
+        if (d.greater.includes("shadow-spear")) props.push("Ignores cover", "Crits on a 1");
+        if (subId === "abyssal-depths" && lvl >= 7) props.push("Slows");
+        const dt = subId === "red-dragon" ? "necrotic/fire" : subId === "abyssal-depths" ? "necrotic/cold" : "necrotic";
+        d.attacks.unshift({ uid: "shadow-blast", name: "Shadow Blast", n: sm.blastN, die: 12, stat: "DEX", mod: st.DEX, dtype: dt, props, vicious: false, noCrit: false, ranged: true });
+      }
+      if (sm.reaver && c.bonescythe) {
+        d.attacks.unshift({ uid: "bonescythe", name: "Bonescythe", n: sm.scytheN, die: 12, stat: "DEX", mod: 0, dtype: "slashing + " + st.DEX + " necrotic per die", props: ["Reach 2", "Shatters on hit"], vicious: false, noCrit: false, ranged: false });
+      }
+    }
     if (cls.id === "berserker" && c.combat.raging && c.fury > 0) d.attacks.forEach((a) => { if (a.stat === "STR") a.fury = c.fury; });
 
     // slot inventario
@@ -385,6 +447,43 @@
       const pool = Math.max(0, st.INT) + [9, 13, 17].filter((L) => lvl >= L).length;
       u.push({ key: "cs-pool", label: "Coordinated Strike (usi extra, max 1/round)", per: "safe", max: pool, src: "Master Commander" });
     }
+    if (cls.id === "cheat") {
+      const hs = d.ch.hs;
+      if (hs) u.push({ key: "tenacious", label: "Tenacious Fighter (+" + d.ch.sneak + ")", per: "turn", max: 1, src: "Honorseeker" });
+      else {
+        u.push({ key: "sneak", label: "Sneak Attack (+" + d.ch.sneak + ")", per: "turn", max: 1, src: "Class" });
+        u.push({ key: "vo", label: "Vicious Opportunist", per: "turn", max: 1, src: "Class" });
+      }
+      if (lvl >= 2) {
+        u.push({ key: "cheat-move", label: "Cheat: free Move or Hide", per: "round", max: 1, src: "Class" });
+        u.push({ key: "cheat-skill", label: "Cheat: skill check = 10+INT", per: "safe", max: 1, src: "Class" });
+      }
+      if (lvl >= 5) u.push({ key: "quick-read", label: "Quick Read", per: "enc", max: 1, src: "Class" });
+      if (lvl >= 6) u.push({ key: "not-happened", label: "THAT’S Not What Happened!", per: "safe", max: 1, src: "Class" });
+      if (lvl >= 13 && !hs) u.push({ key: "twist-free", label: "Twist the Blade (free)", per: "turn", max: 1, src: "Class" });
+      if (subId === "scoundrel") {
+        if (lvl >= 7) u.push({ key: "pocket-sand", label: "Pocket Sand", per: "enc", max: 2, src: "Scoundrel" });
+        if (lvl >= 11) u.push({ key: "escape-plan", label: "Escape Plan", per: "safe", max: 1, src: "Scoundrel" });
+        if (lvl >= 15) u.push({ key: "heads-win", label: "Heads I Win, Tails You Lose", per: "enc", max: 1, src: "Scoundrel" });
+      }
+      if (subId === "serpent" && lvl >= 7) u.push({ key: "noxious", label: "Noxious Cloud", per: "enc", max: lvl >= 15 ? 2 : 1, src: "Serpent" });
+      if (subId === "gambler") {
+        u.push({ key: "practice-roll", label: "That Was Just a Practice Roll", per: "enc", max: lvl >= 15 ? 2 : 1, src: "Gambler" });
+        if (lvl >= 7) u.push({ key: "pocket-aces", label: "Pocket Aces!", per: "safe", max: 1, src: "Gambler" });
+        if (lvl >= 11) u.push({ key: "play-odds", label: "Play the Odds", per: "round", max: 1, src: "Gambler" });
+      }
+      if (hs) u.push({ key: "prove-worth", label: "Prove Your Worth!", per: "turn", max: 1, src: "Honorseeker" });
+    }
+    if (cls.id === "shadowmancer") {
+      const sm = d.sm;
+      if (sm.pilfered > 0 || (lvl >= 2 && !sm.reaver)) u.push({ key: "pilfered", label: "Pilfered Power", per: "safe", max: sm.pilfered, src: "Class" });
+      u.push({ key: "cmd-shadows", label: "Command Shadows", per: "round", max: 1, src: "Cantrip" });
+      if (sm.blast) u.push({ key: "shadow-blast", label: "Shadow Blast", per: "round", max: 1, src: "Cantrip" });
+      if (lvl >= 20) u.push({ key: "usurper", label: "Eldritch Usurper (Greater Shadow)", per: "enc", max: 1, src: "Class" });
+      if (subId === "abyssal-depths" && lvl >= 11) u.push({ key: "glacial", label: "Glacial Resilience", per: "safe", max: 1, src: "Abyssal Depths" });
+      if (subId === "void" && lvl >= 15) u.push({ key: "consuming-dark", label: "The Consuming Dark", per: "enc", max: 1, src: "Void" });
+      if (subId === "high-celestial" && lvl >= 15) u.push({ key: "apotheosis", label: "Apotheosis", per: "safe", max: 1, src: "High Celestial" });
+    }
     if (cls.id === "berserker") {
       if (lvl >= 2) u.push({ key: "ancients", label: "One with the Ancients", per: "safe", max: 1, src: "Class" });
       if (d.arsenal.includes("rampage")) u.push({ key: "rampage", label: "Rampage", per: "turn", max: 1, src: "Savage Arsenal" });
@@ -432,11 +531,16 @@
     };
     const NAMES = { "cs-enc": "Coordinated Strike!", "cs-pool": "Master Commander", ancients: "One with the Ancients", "blood-frenzy": "Blood Frenzy",
       onslaught: "Onslaught", unbreakable: "Unbreakable", "boundless-flames": "BOUNDLESS FLAMES", imfine: "I’m Fine! Totally Fine!",
-      "arena-show": "Showstopping Strike", "arena-glory": "Glory Seeker", "arena-strategy": "Remarkable Strategy", "bulwark-taunt": "Taunting Strike" };
+      "arena-show": "Showstopping Strike", "arena-glory": "Glory Seeker", "arena-strategy": "Remarkable Strategy", "bulwark-taunt": "Taunting Strike",
+      sneak: "Sneak Attack", vo: "Vicious Opportunist", "cheat-move": "Cheat", "cheat-skill": "Cheat", "quick-read": "Quick Read", "not-happened": "THAT’S Not What Happened!",
+      "twist-free": "Twist the Blade", "pocket-sand": "Pocket Sand", "escape-plan": "Escape Plan", "heads-win": "Heads I Win, Tails You Lose", noxious: "Noxious Cloud",
+      "practice-roll": "That Was Just a Practice Roll", "pocket-aces": "Pocket Aces!", "play-odds": "Play the Odds", tenacious: "Tenacious Fighter", "prove-worth": "Prove Your Worth!",
+      pilfered: "Pilfered Power", usurper: "Eldritch Usurper", glacial: "Glacial Resilience", "consuming-dark": "The Consuming Dark", apotheosis: "Apotheosis" };
     u.forEach((x) => {
       if (x.text) return;
       let t = "";
       if (NAMES[x.key]) t = feat(NAMES[x.key]);
+      else if (x.key === "cmd-shadows" || x.key === "shadow-blast") { const ct = (cls.cantrips || []).find((q) => q.id === (x.key === "cmd-shadows" ? "command-shadows" : "shadow-blast")); t = ct ? ct.text : ""; }
       else if (x.key === "rampage" || x.key === "deathless") { const a = byId(cls.arsenal || [], x.key === "deathless" ? "deathless-rage" : "rampage"); t = a ? a.text : ""; }
       else if (x.key.startsWith("ms-")) { const sp = byId(cls.muscleSpells || [], x.key.slice(3)); t = sp ? sp.text.replace(/\n/g, " ") : ""; }
       else if (x.key.startsWith("mast-")) { const mm = byId(cls.masteries || [], x.key.slice(5)); t = mm ? mm.text : ""; }
@@ -489,6 +593,11 @@
       amt = Math.max(0, raw - d.defense);
       notes.push("Defend −" + Math.min(raw, d.defense));
     } else if (opt.defend && opt.crit) notes.push("Il critico ignora la Defense");
+    if (d.sm && d.sm.armor && c.shadows > 0 && amt > 0) {
+      const red = Math.min(amt, c.shadows);
+      amt -= red;
+      notes.push("Armor of Shadows −" + red);
+    }
     if (bz && opt.furySpend > 0) {
       const n = Math.min(Math.round(opt.furySpend), c.fury);
       if (n > 0) {
@@ -560,7 +669,7 @@
 
   NIM.safeRest = function (c, d) {
     c.hp = d.maxHP; c.tmp = 0; c.hd = d.maxHD; c.wounds = Math.max(0, c.wounds - 1);
-    c.used = {}; c.mana = 0; c.fury = 0;
+    c.used = {}; c.mana = 0; c.fury = 0; c.shadows = 0; c.bonescythe = false;
     c.combat = Object.assign(c.combat, { active: false, round: 1, actions: 3, attacks: 0, react: {}, dice: 0, conds: [], raging: false, rageTurn: false });
   };
 
@@ -577,12 +686,21 @@
     if (d.subId === "arena" && c.level >= 11) c.used["arena-show"] = 0;
     const notes = [];
     c.fury = 0; c.combat.raging = false; c.combat.rageTurn = false;
+    c.shadows = 0; c.bonescythe = false;
+    if (d.cls.id === "shadowmancer") {
+      if (d.subId === "red-dragon" && c.level >= 11) {
+        if ((c.used.pilfered || 0) > 0) { c.used.pilfered -= 1; notes.push("Heart of Burning Fire: +1 uso di Pilfered Power"); }
+        else notes.push("Heart of Burning Fire: nessun uso di Pilfered Power da recuperare");
+      }
+      if (d.subId === "reaver" && c.level >= 15) { c.shadows = 2; c.bonescythe = true; notes.push("Sovereign One: 2 Shadow e Bonescythe gratis"); }
+    }
     if (d.subId === "burning-rage" && c.level >= 7) { NIM.rage(c, d, { auto: true }); notes.push("Hot Headed: Rage gratis (+" + d.rageDice + " Fury Dice)"); }
     return notes;
   };
   NIM.endEncounter = function (c) {
     c.combat.active = false; c.combat.dice = 0; c.mana = 0; c.combat.attacks = 0; c.combat.react = {}; c.combat.actions = 3;
     c.fury = 0; c.combat.raging = false; c.combat.rageTurn = false;
+    c.shadows = 0; c.bonescythe = false;
   };
   // Fine turno. opts.attacked === false: nel round non hai attaccato né usato Rage (la Rage finisce).
   // Ritorna le note degli effetti “a inizio turno”.

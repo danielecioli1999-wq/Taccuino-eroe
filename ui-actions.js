@@ -240,6 +240,57 @@
     UI.commit();
   };
 
+  /* ---------- Shadowmancer ---------- */
+  const spendAct = (c, d, n, label) => {
+    const cap = d.dying ? d.dyingActions : 3;
+    if (Math.min(c.combat.actions, cap) < n) { UI.toast("Servono " + n + (n === 1 ? " azione" : " azioni") + ": non le hai."); return false; }
+    c.combat.actions = Math.min(c.combat.actions, cap) - n;
+    return true;
+  };
+  A["shadow-step"] = (el) => { const { c } = ctx(); c.shadows = Math.max(0, c.shadows + +el.dataset.d); UI.commit(); };
+  A["shadow-summon"] = () => {
+    const { c, d } = ctx();
+    const s = d.sm;
+    if (c.shadows >= s.limit) return UI.toast("Hai già il limite di Shadow (" + s.limit + "): Summon Shadow non ha effetto.");
+    if (!spendAct(c, d, 1)) return;
+    const n = Math.min(s.perCast, s.limit - c.shadows);
+    c.shadows += n;
+    UI.toast("Summon Shadow: +" + n + (n === 1 ? " Shadow" : " Shadow") + " (" + c.shadows + "/" + s.limit + ") · −1 azione");
+    UI.commit();
+  };
+  A["shadow-command"] = () => {
+    const { c, d } = ctx();
+    if ((c.used["cmd-shadows"] || 0) >= 1) return UI.toast("Command Shadows è già stato usato in questo round (1/round).");
+    if (!spendAct(c, d, 1)) return;
+    c.used["cmd-shadows"] = 1;
+    UI.toast("Command Shadows: tutti gli Shadow si muovono di 6 e attaccano: " + c.shadows + "d" + d.sm.die + " · −1 azione");
+    UI.commit();
+  };
+  A["scythe-summon"] = () => {
+    const { c, d } = ctx();
+    if (!spendAct(c, d, 1)) return;
+    c.bonescythe = true;
+    UI.toast("Bonescythe evocata: " + d.sm.scytheN + "d12 (Reach 2) · −1 azione");
+    UI.commit();
+  };
+  A["scythe-break"] = () => { const { c } = ctx(); c.bonescythe = false; UI.toast("La Bonescythe si è frantumata: va evocata di nuovo."); UI.commit(); };
+  A["shadow-spell"] = (el) => {
+    const { c, d } = ctx();
+    const k = d.sm.known.find((x) => x.spell.id === el.dataset.id);
+    if (!k) return;
+    const sp = k.spell;
+    const n = +/^(\d)/.exec(sp.cost)[1] || 0;
+    if (n > 0 && !spendAct(c, d, n)) return;
+    let msg = sp.name + (n ? ": −" + n + (n === 1 ? " azione" : " azioni") : "");
+    if (k.mode === "pilfered") {
+      const left = Math.max(0, d.sm.pilfered - (c.used.pilfered || 0));
+      if (left > 0) { c.used.pilfered = (c.used.pilfered || 0) + 1; msg += " · Pilfered Power: " + (left - 1) + "/" + d.sm.pilfered; }
+      else msg += " · Pilfered Power finito: il Patron ti infligge " + Math.ceil(d.maxHP / 2) + " danni (metà PF max): usa “Subisci danno”" + (c.level >= 12 ? " (Greedy Pact: TS di FOR)" : "");
+    } else if (k.mode === "special") msg += " · " + k.note;
+    else if (k.mode === "reaver") msg += " · sacrifica Shadow (Shadow Exploit) o 1 Ferita (My Blood, My Power)";
+    UI.toast(msg);
+    UI.commit();
+  };
   A["cdice-step"] = (el) => { const { c } = ctx(); c.combat.dice = Math.max(0, c.combat.dice + +el.dataset.d); UI.commit(); };
   A["mana-step"] = (el) => { const { c } = ctx(); c.mana = Math.max(0, c.mana + +el.dataset.d); UI.commit(); };
   A["use-pip"] = (el) => {
@@ -584,7 +635,7 @@
       <p class="muted">Tira tu l’Initiative (tuo bonus ${fmt(d.initiative)}${adv ? ", con vantaggio" : ""}) e scrivi il risultato per impostare le azioni. Se lasci vuoto parti con 3 azioni.</p>
       <label class="form">Risultato di Initiative (facoltativo)<input type="number" inputmode="numeric" data-mf="init" value="${esc(mf("init", f))}" placeholder="es. 14"></label>
       <label class="check"><input type="checkbox" data-mf="nat" ${f.nat ? "checked" : ""}> Ho fatto 20 naturale (3 azioni)</label>
-      <p class="muted small">Initiative 9 o meno: 1 azione · 10–19: 2 azioni · 20 o più: 3 azioni.${d.maxDice ? " Ricevi " + d.maxDice + " Combat Dice" : ""}${d.maxMana ? " e " + d.maxMana + " mana" : ""}.</p>
+      <p class="muted small">Initiative 9 o meno: 1 azione · 10–19: 2 azioni · 20 o più: 3 azioni.${d.maxDice ? " Ricevi " + d.maxDice + " Combat Dice" : ""}${d.maxMana ? " e " + d.maxMana + " mana" : ""}.</p>${d.cls.id === "cheat" && c.level >= 2 ? '<p class="muted small"><b>Cheat:</b> se tiri meno di 10 su Initiative puoi considerarlo 10.</p>' : ""}
       <div class="btnrow"><button class="btn" data-act="modal-close">Annulla</button><button class="btn primary" data-act="enc-start">Inizia</button></div></div>`;
   };
 
